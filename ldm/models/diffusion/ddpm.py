@@ -26,7 +26,7 @@ from ldm.modules.distributions.distributions import normal_kl, DiagonalGaussianD
 from ldm.models.autoencoder import IdentityFirstStage, AutoencoderKL
 from ldm.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from ldm.models.diffusion.ddim import DDIMSampler
-
+from torchmetrics.image.fid import FrechetInceptionDistance
 
 __conditioning_keys__ = {'concat': 'c_concat',
                          'crossattn': 'c_crossattn',
@@ -900,6 +900,13 @@ class LatentDiffusion(DDPM):
             raise NotImplementedError()
 
         loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
+        fid = FrechetInceptionDistance(feature=64).cuda()
+        fake_images = model_output[:, :3, :, :].mul(255).clamp(0, 255).to(torch.uint8)
+        real_images = target[:, :3, :, :].mul(255).clamp(0, 255).to(torch.uint8)
+        fid.update(fake_images, real=False)
+        fid.update(real_images, real=True)
+        fid_score = fid.compute()
+        loss_dict.update({f'{prefix}/fid': fid_score})
         loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean()})
 
         logvar_t = self.logvar[t].to(self.device)
